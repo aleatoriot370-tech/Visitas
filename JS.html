@@ -1,0 +1,359 @@
+<script>
+  // ==================================================================
+  // ESTADO EM MEMÓRIA (não usa localStorage/sessionStorage)
+  // ==================================================================
+  var usuarioAtual = null;
+  var visitaAtual = null;          // registro selecionado da lista
+  var geoAtual = { latitude: null, longitude: null };
+  var fotos = { fachada: [], antes: [], depois: [] }; // cada item: {dataUrl, nome}
+  var MAX_LADO_FOTO = 1200;
+
+  // ==================================================================
+  // UTILITÁRIOS DE UI
+  // ==================================================================
+  function mostrarTela(id) {
+    ['tela-login', 'tela-lista', 'tela-form'].forEach(function (t) {
+      document.getElementById(t).classList.toggle('hidden', t !== id);
+    });
+  }
+
+  function toast(msg, tipo) {
+    var el = document.createElement('div');
+    el.className = 'toast' + (tipo ? ' ' + tipo : '');
+    el.textContent = msg;
+    document.body.appendChild(el);
+    setTimeout(function () { el.remove(); }, 3200);
+  }
+
+  function mostrarOverlay(texto) {
+    esconderOverlay();
+    var ov = document.createElement('div');
+    ov.className = 'overlay-carregando';
+    ov.id = 'overlay-global';
+    ov.innerHTML = '<div class="spinner"></div><div class="texto">' + texto + '</div>';
+    document.body.appendChild(ov);
+  }
+  function esconderOverlay() {
+    var ov = document.getElementById('overlay-global');
+    if (ov) ov.remove();
+  }
+
+  // ==================================================================
+  // MÓDULO 1 — LOGIN
+  // ==================================================================
+  function fazerLogin() {
+    var login = document.getElementById('input-login').value.trim();
+    var senha = document.getElementById('input-senha').value;
+    var erroEl = document.getElementById('login-erro');
+    erroEl.classList.add('hidden');
+
+    if (!login || !senha) {
+      erroEl.textContent = 'Preencha login e senha.';
+      erroEl.classList.remove('hidden');
+      return;
+    }
+
+    var btn = document.getElementById('btn-entrar');
+    btn.disabled = true;
+    btn.textContent = 'Entrando...';
+
+    google.script.run
+      .withSuccessHandler(function (res) {
+        btn.disabled = false;
+        btn.textContent = 'Entrar';
+        if (!res.sucesso) {
+          erroEl.textContent = res.mensagem;
+          erroEl.classList.remove('hidden');
+          return;
+        }
+        usuarioAtual = res.usuario;
+        document.getElementById('usuario-nome').textContent = usuarioAtual.Nome || usuarioAtual.Login;
+        document.getElementById('usuario-nome-2').textContent = usuarioAtual.Nome || usuarioAtual.Login;
+        document.getElementById('usuario-nome-3').textContent = usuarioAtual.Nome || usuarioAtual.Login;
+        mostrarTela('tela-lista');
+        carregarVisitas();
+      })
+      .withFailureHandler(function (err) {
+        btn.disabled = false;
+        btn.textContent = 'Entrar';
+        erroEl.textContent = 'Erro de conexão: ' + err.message;
+        erroEl.classList.remove('hidden');
+      })
+      .loginUser(login, senha);
+  }
+
+  function sair() {
+    usuarioAtual = null;
+    visitaAtual = null;
+    document.getElementById('input-login').value = '';
+    document.getElementById('input-senha').value = '';
+    mostrarTela('tela-login');
+  }
+
+  // ==================================================================
+  // MÓDULO 2 — LISTA DE VISITAS DO DIA
+  // ==================================================================
+  function carregarVisitas() {
+    var carregando = document.getElementById('lista-carregando');
+    var vazio = document.getElementById('lista-vazia');
+    var cardsEl = document.getElementById('lista-cards');
+    cardsEl.innerHTML = '';
+    vazio.classList.add('hidden');
+    carregando.classList.remove('hidden');
+
+    google.script.run
+      .withSuccessHandler(function (res) {
+        carregando.classList.add('hidden');
+        if (!res.sucesso) {
+          toast(res.mensagem, 'erro');
+          return;
+        }
+        if (!res.visitas.length) {
+          vazio.classList.remove('hidden');
+          return;
+        }
+        res.visitas.forEach(function (v) { cardsEl.appendChild(criarCard(v)); });
+      })
+      .withFailureHandler(function (err) {
+        carregando.classList.add('hidden');
+        toast('Erro ao carregar visitas: ' + err.message, 'erro');
+      })
+      .getVisitasHoje(usuarioAtual.id_user);
+  }
+
+  function classeSelo(status) {
+    if (!status) return 'selo-outro';
+    var s = status.toLowerCase();
+    if (s.indexOf('pendente auditoria') > -1) return 'selo-auditoria';
+    if (s.indexOf('pendente') > -1) return 'selo-pendente';
+    if (s.indexOf('conclu') > -1 || s.indexOf('aprovad') > -1) return 'selo-concluido';
+    return 'selo-outro';
+  }
+
+  function criarCard(v) {
+    var div = document.createElement('div');
+    div.className = 'card-visita';
+    var razao = (v.Clientes && v.Clientes.Razao) || '—';
+    var status = v.status_atendimento || 'Não iniciado';
+    div.innerHTML =
+      '<div class="info">' +
+        '<div class="codigo">Código ' + v.id_clientes + '</div>' +
+        '<div class="razao">' + razao + '</div>' +
+      '</div>' +
+      '<div class="selo ' + classeSelo(status) + '">' + status + '</div>';
+    div.onclick = function () { abrirVisita(v); };
+    return div;
+  }
+
+  // ==================================================================
+  // MÓDULO 3 — CONFIRMAÇÃO DE VISITA
+  // ==================================================================
+  function abrirVisita(v) {
+    visitaAtual = v;
+    fotos = { fachada: [], antes: [], depois: [] };
+    geoAtual = { latitude: null, longitude: null };
+
+    document.getElementById('fv-codigo').value = v.id_clientes;
+    document.getElementById('fv-razao').value = (v.Clientes && v.Clientes.Razao) || '';
+    document.getElementById('fv-status').value = v.status_atendimento || 'Não iniciado';
+    document.getElementById('fv-observacao').value = '';
+    atualizarContador();
+    ['fachada', 'antes', 'depois'].forEach(function (t) {
+      document.getElementById('miniaturas-' + t).innerHTML = '';
+    });
+
+    mostrarTela('tela-form');
+    obterGeolocalizacao();
+  }
+
+  function voltarParaLista(perguntar) {
+    var temAlteracoes = fotos.fachada.length || fotos.antes.length || fotos.depois.length ||
+      document.getElementById('fv-observacao').value.trim().length > 0;
+    if (perguntar && temAlteracoes) {
+      if (!confirm('Tem certeza que deseja sair? As informações preenchidas serão perdidas.')) return;
+    }
+    visitaAtual = null;
+    mostrarTela('tela-lista');
+    carregarVisitas();
+  }
+
+  function cancelarVisita() {
+    if (!confirm('Tem certeza que deseja cancelar? As informações preenchidas serão perdidas.')) return;
+    voltarParaLista(false);
+  }
+
+  function atualizarContador() {
+    var el = document.getElementById('fv-observacao');
+    document.getElementById('contador-obs').textContent = el.value.length;
+  }
+
+  // ---------------- Geolocalização ----------------
+  function obterGeolocalizacao() {
+    var statusEl = document.getElementById('geo-status');
+    statusEl.className = 'geo-status geo-pendente';
+    statusEl.textContent = 'Obtendo localização do aparelho...';
+
+    if (!navigator.geolocation) {
+      statusEl.className = 'geo-status geo-erro';
+      statusEl.textContent = 'Geolocalização não suportada neste navegador.';
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      function (pos) {
+        geoAtual.latitude = pos.coords.latitude;
+        geoAtual.longitude = pos.coords.longitude;
+        statusEl.className = 'geo-status geo-ok';
+        statusEl.textContent = 'Localização capturada (' + pos.coords.latitude.toFixed(5) + ', ' + pos.coords.longitude.toFixed(5) + ')';
+      },
+      function (err) {
+        statusEl.className = 'geo-status geo-erro';
+        statusEl.textContent = 'Não foi possível obter a localização: ' + err.message + '. Verifique as permissões do navegador.';
+      },
+      { enableHighAccuracy: true, timeout: 12000 }
+    );
+  }
+
+  // ---------------- Fotos: redimensionar + converter para WebP (client-side) ----------------
+  function redimensionarEConverterParaWebp(file, maxLado) {
+    return new Promise(function (resolve, reject) {
+      var leitor = new FileReader();
+      leitor.onerror = function () { reject(new Error('Falha ao ler o arquivo de imagem.')); };
+      leitor.onload = function (e) {
+        var img = new Image();
+        img.onerror = function () { reject(new Error('Falha ao processar a imagem.')); };
+        img.onload = function () {
+          var w = img.width, h = img.height;
+          if (w > maxLado || h > maxLado) {
+            if (w >= h) { h = Math.round(h * (maxLado / w)); w = maxLado; }
+            else { w = Math.round(w * (maxLado / h)); h = maxLado; }
+          }
+          var canvas = document.createElement('canvas');
+          canvas.width = w; canvas.height = h;
+          canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+
+          canvas.toBlob(function (blob) {
+            if (!blob) { reject(new Error('Este navegador não suporta conversão para WebP.')); return; }
+            var leitorBlob = new FileReader();
+            leitorBlob.onload = function () { resolve(leitorBlob.result); };
+            leitorBlob.onerror = function () { reject(new Error('Falha ao gerar dataURL da imagem.')); };
+            leitorBlob.readAsDataURL(blob);
+          }, 'image/webp', 0.82);
+        };
+        img.src = e.target.result;
+      };
+      leitor.readAsDataURL(file);
+    });
+  }
+
+  function tratarSelecaoFoto(event, tipo) {
+    var arquivos = Array.prototype.slice.call(event.target.files || []);
+    if (!arquivos.length) return;
+
+    if (tipo === 'fachada') {
+      fotos.fachada = []; // apenas uma foto: substitui a existente
+      document.getElementById('miniaturas-fachada').innerHTML = '';
+      arquivos = arquivos.slice(0, 1);
+    }
+
+    arquivos.forEach(function (file) {
+      var container = document.getElementById('miniaturas-' + tipo);
+      var placeholder = document.createElement('div');
+      placeholder.className = 'miniatura';
+      placeholder.innerHTML = '<div class="processando">Processando...</div>';
+      container.appendChild(placeholder);
+
+      redimensionarEConverterParaWebp(file, MAX_LADO_FOTO)
+        .then(function (dataUrl) {
+          var item = { dataUrl: dataUrl };
+          fotos[tipo].push(item);
+
+          placeholder.innerHTML = '';
+          var img = document.createElement('img');
+          img.src = dataUrl;
+          placeholder.appendChild(img);
+
+          var btnRemover = document.createElement('button');
+          btnRemover.className = 'remover';
+          btnRemover.textContent = '×';
+          btnRemover.onclick = function (ev) {
+            ev.stopPropagation();
+            var idx = fotos[tipo].indexOf(item);
+            if (idx > -1) fotos[tipo].splice(idx, 1);
+            placeholder.remove();
+          };
+          placeholder.appendChild(btnRemover);
+        })
+        .catch(function (err) {
+          placeholder.remove();
+          toast('Erro ao processar foto: ' + err.message, 'erro');
+        });
+    });
+
+    event.target.value = '';
+  }
+
+  // ---------------- Salvar visita ----------------
+  function salvarVisita() {
+    if (!fotos.fachada.length) { toast('Adicione a foto da fachada.', 'erro'); return; }
+    if (!fotos.antes.length) { toast('Adicione ao menos uma foto do equipamento ANTES.', 'erro'); return; }
+    if (!fotos.depois.length) { toast('Adicione ao menos uma foto do equipamento DEPOIS.', 'erro'); return; }
+    if (geoAtual.latitude === null || geoAtual.longitude === null) {
+      toast('Aguardando localização do aparelho. Tente novamente em instantes.', 'erro');
+      obterGeolocalizacao();
+      return;
+    }
+
+    var idAd = visitaAtual.id_ad;
+    var idClientes = visitaAtual.id_clientes;
+    var observacao = document.getElementById('fv-observacao').value.slice(0, 300);
+
+    var filasFotos = [];
+    ['Fachada', 'Antes', 'Depois'].forEach(function (tipoLabel) {
+      var chave = tipoLabel.toLowerCase();
+      fotos[chave].forEach(function (item, i) {
+        filasFotos.push({ tipo: tipoLabel, dataUrl: item.dataUrl, indice: fotos[chave].length > 1 ? i + 1 : null });
+      });
+    });
+
+    mostrarOverlay('Enviando fotos (0/' + filasFotos.length + ')...');
+
+    salvarFotosSequencial(filasFotos, 0, idAd, idClientes, function (erro) {
+      if (erro) {
+        esconderOverlay();
+        toast('Erro ao enviar fotos: ' + erro, 'erro');
+        return;
+      }
+      mostrarOverlay('Finalizando visita...');
+      google.script.run
+        .withSuccessHandler(function (res) {
+          esconderOverlay();
+          if (!res.sucesso) { toast(res.mensagem, 'erro'); return; }
+          toast('Visita registrada com sucesso!', 'sucesso');
+          voltarParaLista(false);
+        })
+        .withFailureHandler(function (err) {
+          esconderOverlay();
+          toast('Erro ao finalizar visita: ' + err.message, 'erro');
+        })
+        .finalizarVisita(idAd, { latitude: geoAtual.latitude, longitude: geoAtual.longitude, observacao: observacao });
+    });
+  }
+
+  // Envia as fotos uma por vez (evita chamadas paralelas pesadas ao Apps Script)
+  function salvarFotosSequencial(fila, i, idAd, idClientes, callback) {
+    if (i >= fila.length) { callback(null); return; }
+    var item = fila[i];
+    mostrarOverlay('Enviando fotos (' + (i + 1) + '/' + fila.length + ')...');
+
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (!res.sucesso) { callback(res.mensagem); return; }
+        salvarFotosSequencial(fila, i + 1, idAd, idClientes, callback);
+      })
+      .withFailureHandler(function (err) {
+        callback(err.message);
+      })
+      .salvarFoto(idAd, idClientes, item.dataUrl, item.tipo, item.indice);
+  }
+</script>
