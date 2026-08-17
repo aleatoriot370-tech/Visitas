@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <title>Grupo Lamoia | Rotas</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div id="app">
+
+    <!-- ============ TELA: LOGIN ============ -->
+    <div id="tela-login" class="login-wrap">
+      <div class="login-card">
+        <img src="/logo.png" alt="Grupo Lamoia" class="logo-login"
+             onerror="this.style.display='none';document.getElementById('logo-fallback').style.display='flex';">
+        <div id="logo-fallback" class="logo-dot" style="display:none;">GL</div>
+        <h1>Grupo Lamoia</h1>
+        <div class="sub">Painel de Rotas e Visitas</div>
+
+        <div id="login-erro" class="msg-erro hidden"></div>
+
+        <div class="campo">
+          <label for="input-login">Login</label>
+          <input type="text" id="input-login" autocomplete="username" placeholder="Seu usuário">
+        </div>
+        <div class="campo">
+          <label for="input-senha">Senha</label>
+          <input type="password" id="input-senha" autocomplete="current-password" placeholder="••••••••">
+        </div>
+        <button class="btn btn-primario" id="btn-entrar" onclick="fazerLogin()">Entrar</button>
+      </div>
+    </div>
+
+    <!-- ============ TELA: LISTA DE VISITAS ============ -->
+    <div id="tela-lista" class="hidden">
+      <div class="topbar">
+        <img src="/logo.png" alt="Grupo Lamoia" class="logo-topbar"
+             onerror="this.style.display='none';document.getElementById('marca-fallback').style.display='block';">
+        <div id="marca-fallback" class="marca" style="display:none;">Grupo <span>Lamoia</span></div>
+        <div style="display:flex; align-items:center;">
+          <div class="usuario" id="usuario-nome"></div>
+          <button class="sair" onclick="sair()">Sair</button>
+        </div>
+      </div>
+      <main>
+        <div class="filtro-info">Visitas de hoje para <strong id="usuario-nome-2"></strong></div>
+        <div id="lista-carregando" class="spinner hidden"></div>
+        <div id="lista-vazia" class="estado-vazio hidden">
+          <div class="icone">🗺️</div>
+          <div>Nenhuma visita programada para hoje.</div>
+        </div>
+        <div id="lista-cards"></div>
+      </main>
+    </div>
+
+    <!-- ============ TELA: FORMULÁRIO DE VISITA ============ -->
+    <div id="tela-form" class="hidden">
+      <div class="topbar">
+        <img src="/logo.png" alt="Grupo Lamoia" class="logo-topbar"
+             onerror="this.style.display='none';document.getElementById('marca-fallback2').style.display='block';">
+        <div id="marca-fallback2" class="marca" style="display:none;">Grupo <span>Lamoia</span></div>
+        <div style="display:flex; align-items:center;">
+          <div class="usuario" id="usuario-nome-3"></div>
+          <button class="sair" onclick="sair()">Sair</button>
+        </div>
+      </div>
+      <main>
+        <div class="form-header">
+          <button class="voltar" id="btn-voltar" onclick="voltarParaLista(true)">←</button>
+          <h2 id="form-titulo">Confirmação de visita</h2>
+        </div>
+
+        <!-- Cliente -->
+        <div class="bloco">
+          <h3>Cliente</h3>
+          <div class="grid-2">
+            <div class="campo">
+              <label>Código</label>
+              <input type="text" id="fv-codigo" readonly>
+            </div>
+            <div class="campo">
+              <label>Status atual</label>
+              <input type="text" id="fv-status" readonly>
+            </div>
+          </div>
+          <div class="campo" style="margin-bottom:0;">
+            <label>Razão social</label>
+            <input type="text" id="fv-razao" readonly>
+          </div>
+        </div>
+
+        <!-- Datas (apenas Em Atendimento / Auditoria) -->
+        <div class="bloco hidden" id="bloco-datas">
+          <h3>Datas</h3>
+          <div class="grid-2">
+            <div class="campo">
+              <label>Início</label>
+              <input type="text" id="fv-inicio" readonly>
+            </div>
+            <div class="campo">
+              <label>Fim</label>
+              <input type="text" id="fv-fim" readonly>
+            </div>
+          </div>
+        </div>
+
+        <!-- Geolocalização -->
+        <div class="bloco">
+          <h3>Localização</h3>
+          <div id="geo-status" class="geo-status geo-pendente">Obtendo localização do aparelho...</div>
+          <div id="geo-salva" class="geo-salva hidden"></div>
+        </div>
+
+        <!-- Foto Fachada -->
+        <div class="bloco">
+          <h3>Foto da fachada <span class="badge-tipo">1 foto</span></h3>
+          <div class="upload-area" id="upload-fachada-label" onclick="abrirSeletorArquivo('fachada')" role="button" tabindex="0">
+            <input type="file" accept="image/*" capture="environment" id="input-fachada" class="input-file-hidden"
+                   onchange="tratarSelecaoFoto(event, 'fachada')">
+            <div class="upload-icone">📷</div>
+            <div class="upload-texto">Toque para adicionar foto</div>
+            <div class="dica">Redimensionada e convertida automaticamente</div>
+          </div>
+          <div class="miniaturas" id="miniaturas-fachada"></div>
+        </div>
+
+        <!-- Foto Antes -->
+        <div class="bloco" id="bloco-antes">
+          <h3>Foto do equipamento — antes <span class="badge-tipo">1+</span></h3>
+          <div class="upload-area" onclick="abrirSeletorArquivo('antes')" role="button" tabindex="0">
+            <input type="file" accept="image/*" capture="environment" multiple id="input-antes" class="input-file-hidden"
+                   onchange="tratarSelecaoFoto(event, 'antes')">
+            <div class="upload-icone">📷</div>
+            <div class="upload-texto">Toque para adicionar foto(s)</div>
+            <div class="dica">Pode adicionar mais de uma</div>
+          </div>
+          <div class="miniaturas" id="miniaturas-antes"></div>
+        </div>
+
+        <!-- Foto Depois (aparece na etapa 2) -->
+        <div class="bloco hidden" id="bloco-depois">
+          <h3>Foto do equipamento — depois <span class="badge-tipo">1+</span></h3>
+          <div class="upload-area" onclick="abrirSeletorArquivo('depois')" role="button" tabindex="0">
+            <input type="file" accept="image/*" capture="environment" multiple id="input-depois" class="input-file-hidden"
+                   onchange="tratarSelecaoFoto(event, 'depois')">
+            <div class="upload-icone">📷</div>
+            <div class="upload-texto">Toque para adicionar foto(s)</div>
+            <div class="dica">Pode adicionar mais de uma</div>
+          </div>
+          <div class="miniaturas" id="miniaturas-depois"></div>
+        </div>
+
+        <!-- Observação (aparece na etapa 2) -->
+        <div class="bloco hidden" id="bloco-observacao">
+          <h3>Observação</h3>
+          <div class="campo" style="margin-bottom:0;">
+            <textarea id="fv-observacao" rows="3" maxlength="300"
+                      placeholder="Observações sobre o atendimento..."
+                      oninput="atualizarContador()"></textarea>
+            <div class="contador-obs"><span id="contador-obs">0</span>/300</div>
+          </div>
+        </div>
+
+        <!-- Ações -->
+        <div class="acoes-form">
+          <button class="btn btn-secundario" id="btn-cancelar" onclick="cancelarVisita()">Cancelar</button>
+          <button class="btn btn-primario" id="btn-salvar-visita" onclick="abrirAtendimentoAction()">Salvar</button>
+        </div>
+      </main>
+    </div>
+
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

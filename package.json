@@ -1,0 +1,12 @@
+{
+  "name": "grupo-lamoia-rotas",
+  "version": "1.0.0",
+  "description": "App de Rotas e Visitas — Grupo Lamoia (Netlify + Supabase + MEGA)",
+  "scripts": {
+    "dev": "node server.js",
+    "build": "echo 'Static site — no build step'"
+  },
+  "dependencies": {
+    "megajs": "^1.3.3"
+  }
+}
