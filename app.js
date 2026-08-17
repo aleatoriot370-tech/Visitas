@@ -325,6 +325,13 @@ function carregarFotosSalvas(visita, tipos) {
 }
 
 function aplicarUrlComFallback(imgEl, urlOriginal) {
+  // Base64 data URL — funciona direto, sem fallback
+  if (urlOriginal && urlOriginal.indexOf('data:image') === 0) {
+    imgEl.src = urlOriginal;
+    return;
+  }
+
+  // URLs externas (MEGA, Drive, etc.) — tenta com fallback
   var candidatos = gerarUrlsAlternativas(urlOriginal);
   var tentativa = 0;
 
@@ -345,6 +352,9 @@ function aplicarUrlComFallback(imgEl, urlOriginal) {
 
 function gerarUrlsAlternativas(url) {
   if (!url) return [];
+  // Base64 — não precisa de alternativas
+  if (url.indexOf('data:') === 0) return [url];
+
   var urls = [url];
 
   var id = null;

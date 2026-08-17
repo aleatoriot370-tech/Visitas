@@ -2,6 +2,9 @@
  * POST /api/upload-photo  — Upload photo to MEGA + register in fotos_vis
  * Body: { idAd, idClientes, base64Data, tipo, indice }
  * Returns: { sucesso, nome, link }
+ *
+ * A imagem é salva no MEGA (backup) E o base64 é registrado no
+ * fotos_vis.Loc_Foto para exibição direta no navegador.
  */
 
 const { supabaseRequest } = require('./shared/supabase');
@@ -16,31 +19,44 @@ exports.handler = async (event) => {
     const { idAd, idClientes, base64Data, tipo, indice } = JSON.parse(event.body || '{}');
 
     if (!idAd || !base64Data || !tipo) {
-      return ok({ sucesso: false, mensagem: 'Parâmetros obrigatórios ausentes.' });
+      return ok({ sucesso: false, mensagem: 'Parâmetros obrigatórios ausentes (idAd, base64Data, tipo).' });
     }
 
-    // Strip data-URL prefix if present
-    const puro = base64Data.includes(',') ? base64Data.split(',')[1] : base64Data;
-    const buffer = Buffer.from(puro, 'base64');
-
-    // Generate filename
+    // 1. Gera nome do arquivo
     const timestamp = Date.now();
     const sufixo = indice ? '_' + indice : '';
     const nomeArquivo = `cliente${idClientes}_${tipo}_${timestamp}${sufixo}.webp`;
 
-    // Upload to MEGA
-    const { link } = await uploadToMega(buffer, nomeArquivo);
+    // 2. Upload para MEGA (backup — não bloqueia se falhar)
+    let megaLink = null;
+    try {
+      const puro = base64Data.includes(',') ? base64Data.split(',')[1] : base64Data;
+      const buffer = Buffer.from(puro, 'base64');
+      const result = await uploadToMega(buffer, nomeArquivo);
+      megaLink = result.link;
+      console.log('MEGA upload OK:', nomeArquivo, megaLink);
+    } catch (megaErr) {
+      console.warn('MEGA upload falhou (continuando):', megaErr.message);
+    }
 
-    // Register in Supabase
-    await supabaseRequest('fotos_vis', 'POST', {
-      id_vis: idAd,
-      Nome_Foto: nomeArquivo,
-      Tipo: tipo,
-      Loc_Foto: link,
-    });
+    // 3. Registra no Supabase — salva base64 para exibição + link MEGA como referência
+    const locFoto = base64Data; // data:image/webp;base64,... — funciona direto em <img src="...">
 
-    return ok({ sucesso: true, nome: nomeArquivo, link });
+    try {
+      await supabaseRequest('fotos_vis', 'POST', {
+        id_vis: idAd,
+        Nome_Foto: nomeArquivo,
+        Tipo: tipo,
+        Loc_Foto: locFoto,
+      });
+    } catch (dbErr) {
+      console.error('Supabase insert error:', dbErr.message);
+      return ok({ sucesso: false, mensagem: 'Falhou ao registrar foto no banco: ' + dbErr.message });
+    }
+
+    return ok({ sucesso: true, nome: nomeArquivo, link: megaLink || 'salvo_no_banco' });
   } catch (err) {
+    console.error('upload-photo error:', err.message);
     return ok({ sucesso: false, mensagem: 'Erro ao salvar foto: ' + err.message });
   }
 };
