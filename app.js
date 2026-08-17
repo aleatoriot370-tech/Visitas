@@ -476,15 +476,97 @@ function redimensionarEConverterParaWebp(file, maxLado) {
   });
 }
 
-function abrirSeletorArquivo(tipo) {
-  var input = document.getElementById('input-' + tipo);
+// ==================================================================
+// CÂMERA — abre via MediaDevices API (funciona em todos os Androids)
+// ==================================================================
+var cameraStream = null;
+var cameraTipoAtual = null;
+
+function abrirCamera(tipo) {
+  cameraTipoAtual = tipo;
+  var modal = document.getElementById('camera-modal');
+  var video = document.getElementById('camera-video');
+
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    // Fallback: se não tem MediaDevices, abre galeria
+    abrirGaleria(tipo);
+    return;
+  }
+
+  navigator.mediaDevices.getUserMedia({
+    video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } },
+    audio: false
+  })
+    .then(function (stream) {
+      cameraStream = stream;
+      video.srcObject = stream;
+      modal.classList.remove('hidden');
+    })
+    .catch(function (err) {
+      console.warn('Câmera não disponível, abrindo galeria:', err.message);
+      abrirGaleria(tipo);
+    });
+}
+
+function capturarFoto() {
+  var video = document.getElementById('camera-video');
+  var canvas = document.getElementById('camera-canvas');
+  var ctx = canvas.getContext('2d');
+
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  ctx.drawImage(video, 0, 0);
+
+  canvas.toBlob(function (blob) {
+    if (!blob) { toast('Erro ao capturar foto.', 'erro'); return; }
+
+    // Converte blob para File
+    var file = new File([blob], 'foto_' + Date.now() + '.jpg', { type: 'image/jpeg' });
+
+    // Processa como se viesse do input
+    processarArquivo(file, cameraTipoAtual);
+
+    fecharCamera();
+  }, 'image/jpeg', 0.9);
+}
+
+function fecharCamera() {
+  var modal = document.getElementById('camera-modal');
+  modal.classList.add('hidden');
+
+  if (cameraStream) {
+    cameraStream.getTracks().forEach(function (track) { track.stop(); });
+    cameraStream = null;
+  }
+}
+
+function abrirGaleria(tipo) {
+  var input = document.getElementById('input-galeria-' + tipo);
   if (input) input.click();
 }
 
-function tratarSelecaoFoto(event, tipo) {
-  var arquivos = Array.prototype.slice.call(event.target.files || []);
-  if (!arquivos.length) return;
+// Click na area de upload abre a camera
+(function () {
+  var areas = document.querySelectorAll('.upload-area');
+  areas.forEach(function (area) {
+    area.addEventListener('click', function (e) {
+      // Ignora clique no botao de galeria
+      if (e.target.classList.contains('btn-galeria')) return;
 
+      // Descobre qual tipo baseado no bloco pai
+      var bloco = area.closest('.bloco');
+      if (!bloco) return;
+      var tipo = null;
+      if (bloco.contains(document.getElementById('miniaturas-fachada'))) tipo = 'fachada';
+      else if (bloco.contains(document.getElementById('miniaturas-antes'))) tipo = 'antes';
+      else if (bloco.contains(document.getElementById('miniaturas-depois'))) tipo = 'depois';
+
+      if (tipo) abrirCamera(tipo);
+    });
+  });
+})();
+
+function processarArquivo(file, tipo) {
   if (tipo === 'fachada') {
     var pendentes = fotos.fachada.filter(function (f) { return !f.salva; });
     if (pendentes.length >= 1) {
@@ -499,41 +581,47 @@ function tratarSelecaoFoto(event, tipo) {
       im.src = item.dataUrl;
       c.appendChild(d).appendChild(im);
     });
-    arquivos = arquivos.slice(0, 1);
   }
 
-  arquivos.forEach(function (file) {
-    var container = document.getElementById('miniaturas-' + tipo);
-    var placeholder = document.createElement('div');
-    placeholder.className = 'miniatura';
-    placeholder.innerHTML = '<div class="processando">Processando...</div>';
-    container.appendChild(placeholder);
+  var container = document.getElementById('miniaturas-' + tipo);
+  var placeholder = document.createElement('div');
+  placeholder.className = 'miniatura';
+  placeholder.innerHTML = '<div class="processando">Processando...</div>';
+  container.appendChild(placeholder);
 
-    redimensionarEConverterParaWebp(file, MAX_LADO_FOTO)
-      .then(function (dataUrl) {
-        var item = { dataUrl: dataUrl };
-        fotos[tipo].push(item);
+  redimensionarEConverterParaWebp(file, MAX_LADO_FOTO)
+    .then(function (dataUrl) {
+      var item = { dataUrl: dataUrl };
+      fotos[tipo].push(item);
 
-        placeholder.innerHTML = '';
-        var img = document.createElement('img');
-        img.src = dataUrl;
-        placeholder.appendChild(img);
+      placeholder.innerHTML = '';
+      var img = document.createElement('img');
+      img.src = dataUrl;
+      placeholder.appendChild(img);
 
-        var btnRemover = document.createElement('button');
-        btnRemover.className = 'remover';
-        btnRemover.textContent = '×';
-        btnRemover.onclick = function (ev) {
-          ev.stopPropagation();
-          var idx = fotos[tipo].indexOf(item);
-          if (idx > -1) fotos[tipo].splice(idx, 1);
-          placeholder.remove();
-        };
-        placeholder.appendChild(btnRemover);
-      })
-      .catch(function (err) {
+      var btnRemover = document.createElement('button');
+      btnRemover.className = 'remover';
+      btnRemover.textContent = '×';
+      btnRemover.onclick = function (ev) {
+        ev.stopPropagation();
+        var idx = fotos[tipo].indexOf(item);
+        if (idx > -1) fotos[tipo].splice(idx, 1);
         placeholder.remove();
-        toast('Erro ao processar foto: ' + err.message, 'erro');
-      });
+      };
+      placeholder.appendChild(btnRemover);
+    })
+    .catch(function (err) {
+      placeholder.remove();
+      toast('Erro ao processar foto: ' + err.message, 'erro');
+    });
+}
+
+function tratarSelecaoFoto(event, tipo) {
+  var arquivos = Array.prototype.slice.call(event.target.files || []);
+  if (!arquivos.length) return;
+
+  arquivos.forEach(function (file) {
+    processarArquivo(file, tipo);
   });
 
   event.target.value = '';

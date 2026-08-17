@@ -13,7 +13,7 @@
     <div id="tela-login" class="login-wrap">
       <div class="login-card">
         <img src="/logo.png" alt="Grupo Lamoia" class="logo-login"
-             onerror="this.style.display='none';document.getElementById('logo-fallback').style.display='flex';">>
+             onerror="this.style.display='none';document.getElementById('logo-fallback').style.display='flex';">
         <div id="logo-fallback" class="logo-dot" style="display:none;">GL</div>
         <h1>Grupo Lamoia</h1>
         <div class="sub">Painel de Rotas e Visitas</div>
@@ -115,12 +115,11 @@
         <!-- Foto Fachada -->
         <div class="bloco">
           <h3>Foto da fachada <span class="badge-tipo">1 foto</span></h3>
-          <div class="upload-area" id="upload-fachada-label" onclick="abrirSeletorArquivo('fachada')" role="button" tabindex="0">
-            <input type="file" accept="image/*" id="input-fachada" class="input-file-hidden"
-                   onchange="tratarSelecaoFoto(event, 'fachada')" capture>
+          <div class="upload-area" id="upload-fachada-label" role="button" tabindex="0">
             <div class="upload-icone">📷</div>
-            <div class="upload-texto">Toque para adicionar foto</div>
-            <div class="dica">Redimensionada e convertida automaticamente</div>
+            <div class="upload-texto">Toque para tirar foto</div>
+            <div class="dica">Câmera será aberta automaticamente</div>
+            <button class="btn-galeria" type="button" onclick="event.stopPropagation();abrirGaleria('fachada')">📁 Escolher da galeria</button>
           </div>
           <div class="miniaturas" id="miniaturas-fachada"></div>
         </div>
@@ -128,12 +127,11 @@
         <!-- Foto Antes -->
         <div class="bloco" id="bloco-antes">
           <h3>Foto do equipamento — antes <span class="badge-tipo">1+</span></h3>
-          <div class="upload-area" onclick="abrirSeletorArquivo('antes')" role="button" tabindex="0">
-            <input type="file" accept="image/*" multiple id="input-antes" class="input-file-hidden"
-                   onchange="tratarSelecaoFoto(event, 'antes')" capture>
+          <div class="upload-area" role="button" tabindex="0">
             <div class="upload-icone">📷</div>
-            <div class="upload-texto">Toque para adicionar foto(s)</div>
+            <div class="upload-texto">Toque para tirar foto(s)</div>
             <div class="dica">Pode adicionar mais de uma</div>
+            <button class="btn-galeria" type="button" onclick="event.stopPropagation();abrirGaleria('antes')">📁 Escolher da galeria</button>
           </div>
           <div class="miniaturas" id="miniaturas-antes"></div>
         </div>
@@ -141,12 +139,11 @@
         <!-- Foto Depois (aparece na etapa 2) -->
         <div class="bloco hidden" id="bloco-depois">
           <h3>Foto do equipamento — depois <span class="badge-tipo">1+</span></h3>
-          <div class="upload-area" onclick="abrirSeletorArquivo('depois')" role="button" tabindex="0">
-            <input type="file" accept="image/*" multiple id="input-depois" class="input-file-hidden"
-                   onchange="tratarSelecaoFoto(event, 'depois')" capture>
+          <div class="upload-area" role="button" tabindex="0">
             <div class="upload-icone">📷</div>
-            <div class="upload-texto">Toque para adicionar foto(s)</div>
+            <div class="upload-texto">Toque para tirar foto(s)</div>
             <div class="dica">Pode adicionar mais de uma</div>
+            <button class="btn-galeria" type="button" onclick="event.stopPropagation();abrirGaleria('depois')">📁 Escolher da galeria</button>
           </div>
           <div class="miniaturas" id="miniaturas-depois"></div>
         </div>
@@ -169,6 +166,23 @@
         </div>
       </main>
     </div>
+
+    <!-- ============ MODAL DA CÂMERA ============ -->
+    <div id="camera-modal" class="camera-modal hidden">
+      <div class="camera-container">
+        <video id="camera-video" autoplay playsinline></video>
+        <canvas id="camera-canvas" style="display:none;"></canvas>
+        <div class="camera-botoes">
+          <button class="btn-camera-cancelar" onclick="fecharCamera()">✕ Cancelar</button>
+          <button class="btn-camera-capturar" onclick="capturarFoto()">📸</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Inputs de arquivo ocultos para galeria -->
+    <input type="file" accept="image/*" id="input-galeria-fachada" class="input-file-hidden" onchange="tratarSelecaoFoto(event, 'fachada')">
+    <input type="file" accept="image/*" multiple id="input-galeria-antes" class="input-file-hidden" onchange="tratarSelecaoFoto(event, 'antes')">
+    <input type="file" accept="image/*" multiple id="input-galeria-depois" class="input-file-hidden" onchange="tratarSelecaoFoto(event, 'depois')">
 
   </div>
 
