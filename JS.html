@@ -5,8 +5,13 @@
   var usuarioAtual = null;
   var visitaAtual = null;          // registro selecionado da lista
   var geoAtual = { latitude: null, longitude: null };
-  var fotos = { fachada: [], antes: [], depois: [] }; // cada item: {dataUrl, nome}
+  var fotos = { fachada: [], antes: [], depois: [] }; // cada item: {dataUrl, nome, salva}
   var MAX_LADO_FOTO = 1200;
+
+  // Status possíveis (espelham Code.gs)
+  var STATUS_PENDENTE = 'Pendente';
+  var STATUS_EM_ATENDIMENTO = 'Em Atendimento';
+  var STATUS_PENDENTE_AUDITORIA = 'Pendente Auditoria';
 
   // ==================================================================
   // UTILITÁRIOS DE UI
@@ -67,9 +72,10 @@
           return;
         }
         usuarioAtual = res.usuario;
-        document.getElementById('usuario-nome').textContent = usuarioAtual.Nome || usuarioAtual.Login;
-        document.getElementById('usuario-nome-2').textContent = usuarioAtual.Nome || usuarioAtual.Login;
-        document.getElementById('usuario-nome-3').textContent = usuarioAtual.Nome || usuarioAtual.Login;
+        var nome = usuarioAtual.Nome || usuarioAtual.Login;
+        document.getElementById('usuario-nome').textContent = nome;
+        document.getElementById('usuario-nome-2').textContent = nome;
+        document.getElementById('usuario-nome-3').textContent = nome;
         mostrarTela('tela-lista');
         carregarVisitas();
       })
@@ -125,6 +131,7 @@
     if (!status) return 'selo-outro';
     var s = status.toLowerCase();
     if (s.indexOf('pendente auditoria') > -1) return 'selo-auditoria';
+    if (s.indexOf('em atendimento') > -1) return 'selo-andamento';
     if (s.indexOf('pendente') > -1) return 'selo-pendente';
     if (s.indexOf('conclu') > -1 || s.indexOf('aprovad') > -1) return 'selo-concluido';
     return 'selo-outro';
@@ -134,7 +141,7 @@
     var div = document.createElement('div');
     div.className = 'card-visita';
     var razao = (v.Clientes && v.Clientes.Razao) || '—';
-    var status = v.status_atendimento || 'Não iniciado';
+    var status = v.status_atendimento || STATUS_PENDENTE;
     div.innerHTML =
       '<div class="info">' +
         '<div class="codigo">Código ' + v.id_clientes + '</div>' +
@@ -146,7 +153,7 @@
   }
 
   // ==================================================================
-  // MÓDULO 3 — CONFIRMAÇÃO DE VISITA
+  // MÓDULO 3 — ABERTURA DO FORMULÁRIO (3 modos conforme status)
   // ==================================================================
   function abrirVisita(v) {
     visitaAtual = v;
@@ -155,19 +162,264 @@
 
     document.getElementById('fv-codigo').value = v.id_clientes;
     document.getElementById('fv-razao').value = (v.Clientes && v.Clientes.Razao) || '';
-    document.getElementById('fv-status').value = v.status_atendimento || 'Não iniciado';
+    var status = v.status_atendimento || STATUS_PENDENTE;
+    document.getElementById('fv-status').value = status;
     document.getElementById('fv-observacao').value = '';
+    document.getElementById('fv-inicio').value = '';
+    document.getElementById('fv-fim').value = '';
     atualizarContador();
+
+    // Limpa miniaturas
     ['fachada', 'antes', 'depois'].forEach(function (t) {
       document.getElementById('miniaturas-' + t).innerHTML = '';
     });
 
+    // Esconde campos extras
+    document.getElementById('bloco-depois').classList.add('hidden');
+    document.getElementById('bloco-observacao').classList.add('hidden');
+    document.getElementById('bloco-datas').classList.add('hidden');
+    document.getElementById('geo-salva').classList.add('hidden');
+    document.getElementById('geo-status').classList.remove('hidden');
+
     mostrarTela('tela-form');
+
+    // Decide o modo conforme o status
+    if (status === STATUS_PENDENTE || !status) {
+      configurarModoPendente();
+    } else if (status === STATUS_EM_ATENDIMENTO) {
+      // Reabre carregando dados salvos
+      carregarVisitaDetalhada(v.id_ad, configurarModoEmAtendimento);
+    } else if (status === STATUS_PENDENTE_AUDITORIA) {
+      carregarVisitaDetalhada(v.id_ad, configurarModoAuditoria);
+    } else {
+      // Status desconhecido — abre em modo leitura
+      carregarVisitaDetalhada(v.id_ad, configurarModoAuditoria);
+    }
+  }
+
+  /**
+   * Carrega os dados completos da visita (com fotos) do banco.
+   * Necessário porque a lista não traz a relação de fotos em alguns cenários.
+   */
+  function carregarVisitaDetalhada(idAd, callback) {
+    mostrarOverlay('Carregando dados da visita...');
+    google.script.run
+      .withSuccessHandler(function (res) {
+        esconderOverlay();
+        if (!res.sucesso) {
+          toast(res.mensagem, 'erro');
+          voltarParaLista(false);
+          return;
+        }
+        visitaAtual = res.visita;
+        callback(res.visita);
+      })
+      .withFailureHandler(function (err) {
+        esconderOverlay();
+        toast('Erro ao carregar visita: ' + err.message, 'erro');
+        voltarParaLista(false);
+      })
+      .getVisita(idAd);
+  }
+
+  // ---------------- MODO: PENDENTE (Etapa 1 — Abrir Atendimento) ----------------
+  function configurarModoPendente() {
+    document.getElementById('form-titulo').textContent = 'Abrir Atendimento';
+    document.getElementById('btn-salvar-visita').textContent = 'Abrir Atendimento';
+    document.getElementById('btn-salvar-visita').onclick = abrirAtendimentoAction;
+    document.getElementById('btn-salvar-visita').classList.remove('hidden');
+    document.getElementById('btn-cancelar').textContent = 'Cancelar';
+    document.getElementById('btn-cancelar').onclick = cancelarVisita;
+    document.getElementById('btn-cancelar').classList.remove('hidden');
+    document.getElementById('btn-voltar').onclick = function () { voltarParaLista(true); };
+
+    // Captura geolocalização ativa
     obterGeolocalizacao();
   }
 
+  // ---------------- MODO: EM ATENDIMENTO (Etapa 2 — Fecha Atendimento) ----------------
+  function configurarModoEmAtendimento(visita) {
+    document.getElementById('form-titulo').textContent = 'Fecha Atendimento';
+
+    // Exibe datas salvas
+    document.getElementById('bloco-datas').classList.remove('hidden');
+    document.getElementById('fv-inicio').value = formatarDataHora(visita.data_hora_atendimento_inicio);
+
+    // Exibe geo salva
+    if (visita.latitude && visita.longitude) {
+      document.getElementById('geo-status').classList.add('hidden');
+      var geoSalva = document.getElementById('geo-salva');
+      geoSalva.classList.remove('hidden');
+      geoSalva.className = 'geo-salva geo-ok';
+      geoSalva.textContent = 'Localização inicial capturada (' +
+        Number(visita.latitude).toFixed(5) + ', ' + Number(visita.longitude).toFixed(5) + ')';
+    }
+
+    // Carrega fotos salvas (Fachada e Antes) — somente leitura
+    carregarFotosSalvas(visita, ['Fachada', 'Antes']);
+
+    // Bloqueia upload das fotos já salvas (Fachada e Antes ficam somente leitura)
+    document.getElementById('upload-fachada-label').classList.add('hidden');
+    document.getElementById('bloco-antes').querySelector('.upload-area').classList.add('hidden');
+
+    // Libera bloco Depois e Observação
+    document.getElementById('bloco-depois').classList.remove('hidden');
+    document.getElementById('bloco-observacao').classList.remove('hidden');
+
+    // Botões
+    document.getElementById('btn-salvar-visita').textContent = 'Fecha Atendimento';
+    document.getElementById('btn-salvar-visita').onclick = fecharAtendimentoAction;
+    document.getElementById('btn-salvar-visita').classList.remove('hidden');
+    document.getElementById('btn-cancelar').textContent = 'Cancelar';
+    document.getElementById('btn-cancelar').onclick = cancelarVisita;
+    document.getElementById('btn-cancelar').classList.remove('hidden');
+    document.getElementById('btn-voltar').onclick = function () { voltarParaLista(true); };
+  }
+
+  // ---------------- MODO: PENDENTE AUDITORIA (Somente Leitura) ----------------
+  function configurarModoAuditoria(visita) {
+    document.getElementById('form-titulo').textContent = 'Visita Concluída — Auditoria';
+
+    // Exibe datas
+    document.getElementById('bloco-datas').classList.remove('hidden');
+    document.getElementById('fv-inicio').value = formatarDataHora(visita.data_hora_atendimento_inicio);
+    document.getElementById('fv-fim').value = formatarDataHora(visita.data_hora_atendimento_fim);
+
+    // Exibe geo
+    if (visita.latitude && visita.longitude) {
+      document.getElementById('geo-status').classList.add('hidden');
+      var geoSalva = document.getElementById('geo-salva');
+      geoSalva.classList.remove('hidden');
+      geoSalva.className = 'geo-salva geo-ok';
+      geoSalva.textContent = 'Localização capturada (' +
+        Number(visita.latitude).toFixed(5) + ', ' + Number(visita.longitude).toFixed(5) + ')';
+    }
+
+    // Carrega todas as fotos salvas
+    carregarFotosSalvas(visita, ['Fachada', 'Antes', 'Depois']);
+
+    // Mostra bloco Depois e Observação (leitura)
+    document.getElementById('bloco-depois').classList.remove('hidden');
+    document.getElementById('bloco-observacao').classList.remove('hidden');
+
+    // Preenche observação
+    document.getElementById('fv-observacao').value = visita.observacao || '';
+    atualizarContador();
+
+    // Esconde todas as áreas de upload
+    var uploads = document.querySelectorAll('.upload-area');
+    for (var i = 0; i < uploads.length; i++) uploads[i].classList.add('hidden');
+
+    // Desabilita textarea
+    document.getElementById('fv-observacao').setAttribute('readonly', 'readonly');
+
+    // Botões: apenas Voltar
+    document.getElementById('btn-salvar-visita').classList.add('hidden');
+    document.getElementById('btn-cancelar').textContent = 'Voltar';
+    document.getElementById('btn-cancelar').onclick = function () { voltarParaLista(false); };
+    document.getElementById('btn-cancelar').classList.remove('hidden');
+    document.getElementById('btn-voltar').onclick = function () { voltarParaLista(false); };
+  }
+
+  // ---------------- Carrega fotos salvas do banco em modo leitura ----------------
+  function carregarFotosSalvas(visita, tipos) {
+    if (!visita.fotos_vis) return;
+    visita.fotos_vis.forEach(function (f) {
+      if (tipos.indexOf(f.Tipo) === -1) return;
+      var chave = f.Tipo.toLowerCase();
+      var container = document.getElementById('miniaturas-' + chave);
+      if (!container) return;
+
+      var item = { dataUrl: f.Loc_Foto, nome: f.Nome_Foto, salva: true };
+      fotos[chave].push(item);
+
+      var div = document.createElement('div');
+      div.className = 'miniatura';
+      var img = document.createElement('img');
+      img.alt = f.Nome_Foto || '';
+
+      // Fallback robusto: se a URL primária falhar, tenta alternativas automaticamente.
+      // Cobre URLs antigas (drive.google.com/uc?id=) que o Google descontinuou para <img>.
+      aplicarUrlComFallback(img, f.Loc_Foto);
+
+      div.appendChild(img);
+      container.appendChild(div);
+    });
+  }
+
+  /**
+   * Tenta carregar uma imagem a partir de uma URL; se falhar, tenta os formatos
+   * alternativos do Google Drive automaticamente. Se todos falharem, mostra
+   * um placeholder com o nome do arquivo.
+   */
+  function aplicarUrlComFallback(imgEl, urlOriginal) {
+    var candidatos = gerarUrlsAlternativas(urlOriginal);
+    var tentativa = 0;
+
+    imgEl.addEventListener('error', function () {
+      tentativa++;
+      if (tentativa < candidatos.length) {
+        imgEl.src = candidatos[tentativa];
+      } else {
+        // Esgotou alternativas — mostra placeholder
+        imgEl.removeAttribute('src');
+        imgEl.classList.add('miniatura-erro');
+        imgEl.parentElement.classList.add('miniatura-erro-container');
+        imgEl.parentElement.innerHTML =
+          '<div class="miniatura-erro-info">📷<br><small>(não carregou)</small></div>';
+      }
+    });
+
+    imgEl.src = candidatos[0];
+  }
+
+  /**
+   * Gera lista de URLs candidatas a partir de uma URL do Google Drive.
+   * Ordem de tentativa: formato novo (lh3) -> uc?id -> file/d -> thumbnail.
+   */
+  function gerarUrlsAlternativas(url) {
+    if (!url) return [];
+    var urls = [url]; // começa com a original
+
+    var id = null;
+    var m1 = url.match(/[?&]id=([^&]+)/);
+    if (m1) id = m1[1];
+    if (!id) {
+      var m2 = url.match(/\/file\/d\/([^\/]+)/);
+      if (m2) id = m2[1];
+    }
+    if (!id) {
+      var m3 = url.match(/\/d\/([^\/]+)/);
+      if (m3) id = m3[1];
+    }
+
+    if (id) {
+      var lh3 = 'https://lh3.googleusercontent.com/d/' + id;
+      var uc = 'https://drive.google.com/uc?id=' + id;
+      var thumb = 'https://drive.google.com/thumbnail?id=' + id + '&sz=w400-h400';
+      // Adiciona sem duplicar
+      if (urls.indexOf(lh3) === -1) urls.push(lh3);
+      if (urls.indexOf(uc) === -1) urls.push(uc);
+      if (urls.indexOf(thumb) === -1) urls.push(thumb);
+    }
+    return urls;
+  }
+
+  function formatarDataHora(ts) {
+    if (!ts) return '';
+    try {
+      var d = new Date(ts.replace(' ', 'T'));
+      if (isNaN(d.getTime())) return ts;
+      var pad = function (n) { return (n < 10 ? '0' : '') + n; };
+      return pad(d.getDate()) + '/' + pad(d.getMonth() + 1) + '/' + d.getFullYear() +
+        ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+    } catch (e) { return ts; }
+  }
+
   function voltarParaLista(perguntar) {
-    var temAlteracoes = fotos.fachada.length || fotos.antes.length || fotos.depois.length ||
+    var temAlteracoes = fotos.fachada.some(function (f) { return !f.salva; }) ||
+      fotos.antes.some(function (f) { return !f.salva; }) ||
+      fotos.depois.some(function (f) { return !f.salva; }) ||
       document.getElementById('fv-observacao').value.trim().length > 0;
     if (perguntar && temAlteracoes) {
       if (!confirm('Tem certeza que deseja sair? As informações preenchidas serão perdidas.')) return;
@@ -184,7 +436,7 @@
 
   function atualizarContador() {
     var el = document.getElementById('fv-observacao');
-    document.getElementById('contador-obs').textContent = el.value.length;
+    if (el) document.getElementById('contador-obs').textContent = el.value.length;
   }
 
   // ---------------- Geolocalização ----------------
@@ -192,6 +444,8 @@
     var statusEl = document.getElementById('geo-status');
     statusEl.className = 'geo-status geo-pendente';
     statusEl.textContent = 'Obtendo localização do aparelho...';
+    statusEl.classList.remove('hidden');
+    document.getElementById('geo-salva').classList.add('hidden');
 
     if (!navigator.geolocation) {
       statusEl.className = 'geo-status geo-erro';
@@ -246,13 +500,35 @@
     });
   }
 
+  // Dispara o clique no <input type="file"> correspondente.
+  // Necessário porque a .upload-area agora é um <div role="button"> (não mais <label>),
+  // para evitar bug de rendering em mobile (Android Chrome / iOS Safari) onde <label>
+  // com display:flex + input file oculto colapsava os filhos visíveis.
+  function abrirSeletorArquivo(tipo) {
+    var input = document.getElementById('input-' + tipo);
+    if (input) input.click();
+  }
+
   function tratarSelecaoFoto(event, tipo) {
     var arquivos = Array.prototype.slice.call(event.target.files || []);
     if (!arquivos.length) return;
 
     if (tipo === 'fachada') {
-      fotos.fachada = []; // apenas uma foto: substitui a existente
+      // Fachada: apenas 1 foto. Se já existe salva, não permite trocar (modo Em Atendimento bloqueia o input).
+      var pendentes = fotos.fachada.filter(function (f) { return !f.salva; });
+      if (pendentes.length >= 1) {
+        fotos.fachada = fotos.fachada.filter(function (f) { return f.salva; });
+      }
       document.getElementById('miniaturas-fachada').innerHTML = '';
+      // Re-renderiza as salvas
+      fotos.fachada.forEach(function (item) {
+        var c = document.getElementById('miniaturas-fachada');
+        var d = document.createElement('div');
+        d.className = 'miniatura';
+        var im = document.createElement('img');
+        im.src = item.dataUrl;
+        c.appendChild(d).appendChild(im);
+      });
       arquivos = arquivos.slice(0, 1);
     }
 
@@ -293,11 +569,16 @@
     event.target.value = '';
   }
 
-  // ---------------- Salvar visita ----------------
-  function salvarVisita() {
-    if (!fotos.fachada.length) { toast('Adicione a foto da fachada.', 'erro'); return; }
-    if (!fotos.antes.length) { toast('Adicione ao menos uma foto do equipamento ANTES.', 'erro'); return; }
-    if (!fotos.depois.length) { toast('Adicione ao menos uma foto do equipamento DEPOIS.', 'erro'); return; }
+  // ==================================================================
+  // AÇÃO: ABRIR ATENDIMENTO (Etapa 1)
+  // ==================================================================
+  function abrirAtendimentoAction() {
+    // Validações
+    var novasFachada = fotos.fachada.filter(function (f) { return !f.salva; });
+    var novasAntes = fotos.antes.filter(function (f) { return !f.salva; });
+
+    if (!novasFachada.length) { toast('Adicione a foto da fachada.', 'erro'); return; }
+    if (!novasAntes.length) { toast('Adicione ao menos uma foto do equipamento ANTES.', 'erro'); return; }
     if (geoAtual.latitude === null || geoAtual.longitude === null) {
       toast('Aguardando localização do aparelho. Tente novamente em instantes.', 'erro');
       obterGeolocalizacao();
@@ -306,13 +587,21 @@
 
     var idAd = visitaAtual.id_ad;
     var idClientes = visitaAtual.id_clientes;
-    var observacao = document.getElementById('fv-observacao').value.slice(0, 300);
 
+    // Fila: apenas fotos novas (Fachada e Antes)
     var filasFotos = [];
-    ['Fachada', 'Antes', 'Depois'].forEach(function (tipoLabel) {
-      var chave = tipoLabel.toLowerCase();
-      fotos[chave].forEach(function (item, i) {
-        filasFotos.push({ tipo: tipoLabel, dataUrl: item.dataUrl, indice: fotos[chave].length > 1 ? i + 1 : null });
+    novasFachada.forEach(function (item, i) {
+      filasFotos.push({
+        tipo: 'Fachada',
+        dataUrl: item.dataUrl,
+        indice: novasFachada.length > 1 ? i + 1 : null
+      });
+    });
+    novasAntes.forEach(function (item, i) {
+      filasFotos.push({
+        tipo: 'Antes',
+        dataUrl: item.dataUrl,
+        indice: novasAntes.length > 1 ? i + 1 : null
       });
     });
 
@@ -324,19 +613,66 @@
         toast('Erro ao enviar fotos: ' + erro, 'erro');
         return;
       }
-      mostrarOverlay('Finalizando visita...');
+      mostrarOverlay('Abrindo atendimento...');
       google.script.run
         .withSuccessHandler(function (res) {
           esconderOverlay();
           if (!res.sucesso) { toast(res.mensagem, 'erro'); return; }
-          toast('Visita registrada com sucesso!', 'sucesso');
+          toast('Atendimento iniciado com sucesso!', 'sucesso');
           voltarParaLista(false);
         })
         .withFailureHandler(function (err) {
           esconderOverlay();
-          toast('Erro ao finalizar visita: ' + err.message, 'erro');
+          toast('Erro ao abrir atendimento: ' + err.message, 'erro');
         })
-        .finalizarVisita(idAd, { latitude: geoAtual.latitude, longitude: geoAtual.longitude, observacao: observacao });
+        .abrirAtendimento(idAd, {
+          latitude: geoAtual.latitude,
+          longitude: geoAtual.longitude
+        });
+    });
+  }
+
+  // ==================================================================
+  // AÇÃO: FECHAR ATENDIMENTO (Etapa 2)
+  // ==================================================================
+  function fecharAtendimentoAction() {
+    var novasDepois = fotos.depois.filter(function (f) { return !f.salva; });
+    if (!novasDepois.length) { toast('Adicione ao menos uma foto do equipamento DEPOIS.', 'erro'); return; }
+
+    var idAd = visitaAtual.id_ad;
+    var idClientes = visitaAtual.id_clientes;
+    var observacao = document.getElementById('fv-observacao').value.slice(0, 300);
+
+    var filasFotos = [];
+    novasDepois.forEach(function (item, i) {
+      filasFotos.push({
+        tipo: 'Depois',
+        dataUrl: item.dataUrl,
+        indice: novasDepois.length > 1 ? i + 1 : null
+      });
+    });
+
+    mostrarOverlay('Enviando fotos (0/' + filasFotos.length + ')...');
+
+    salvarFotosSequencial(filasFotos, 0, idAd, idClientes, function (erro) {
+      if (erro) {
+        esconderOverlay();
+        toast('Erro ao enviar fotos: ' + erro, 'erro');
+        return;
+      }
+      mostrarOverlay('Fechando atendimento...');
+      google.script.run
+        .withSuccessHandler(function (res) {
+          esconderOverlay();
+          if (!res.sucesso) { toast(res.mensagem, 'erro'); return; }
+          toast('Atendimento finalizado com sucesso!', 'sucesso');
+          voltarParaLista(false);
+        })
+        .withFailureHandler(function (err) {
+          esconderOverlay();
+          toast('Erro ao fechar atendimento: ' + err.message, 'erro');
+        })
+        .fecharAtendimento(idAd, { observacao: observacao });
     });
   }
 
