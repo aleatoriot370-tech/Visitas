@@ -116,8 +116,8 @@
         <div class="bloco">
           <h3>Foto da fachada <span class="badge-tipo">1 foto</span></h3>
           <div class="upload-area" id="upload-fachada-label" onclick="abrirSeletorArquivo('fachada')" role="button" tabindex="0">
-            <input type="file" accept="image/*" capture="environment" id="input-fachada" class="input-file-hidden"
-                   onchange="tratarSelecaoFoto(event, 'fachada')">
+            <input type="file" accept="image/*" id="input-fachada" class="input-file-hidden"
+                   onchange="tratarSelecaoFoto(event, 'fachada')" capture>
             <div class="upload-icone">📷</div>
             <div class="upload-texto">Toque para adicionar foto</div>
             <div class="dica">Redimensionada e convertida automaticamente</div>
@@ -129,8 +129,8 @@
         <div class="bloco" id="bloco-antes">
           <h3>Foto do equipamento — antes <span class="badge-tipo">1+</span></h3>
           <div class="upload-area" onclick="abrirSeletorArquivo('antes')" role="button" tabindex="0">
-            <input type="file" accept="image/*" capture="environment" multiple id="input-antes" class="input-file-hidden"
-                   onchange="tratarSelecaoFoto(event, 'antes')">
+            <input type="file" accept="image/*" multiple id="input-antes" class="input-file-hidden"
+                   onchange="tratarSelecaoFoto(event, 'antes')" capture>
             <div class="upload-icone">📷</div>
             <div class="upload-texto">Toque para adicionar foto(s)</div>
             <div class="dica">Pode adicionar mais de uma</div>
@@ -142,8 +142,8 @@
         <div class="bloco hidden" id="bloco-depois">
           <h3>Foto do equipamento — depois <span class="badge-tipo">1+</span></h3>
           <div class="upload-area" onclick="abrirSeletorArquivo('depois')" role="button" tabindex="0">
-            <input type="file" accept="image/*" capture="environment" multiple id="input-depois" class="input-file-hidden"
-                   onchange="tratarSelecaoFoto(event, 'depois')">
+            <input type="file" accept="image/*" multiple id="input-depois" class="input-file-hidden"
+                   onchange="tratarSelecaoFoto(event, 'depois')" capture>
             <div class="upload-icone">📷</div>
             <div class="upload-texto">Toque para adicionar foto(s)</div>
             <div class="dica">Pode adicionar mais de uma</div>
