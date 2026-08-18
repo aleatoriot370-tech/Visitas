@@ -5,11 +5,12 @@
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY;
 
-if (!SUPABASE_URL || !SUPABASE_KEY) {
-  throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_KEY env vars');
+function getBaseUrl() {
+  if (!SUPABASE_URL || !SUPABASE_KEY) {
+    throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_KEY env vars');
+  }
+  return SUPABASE_URL.replace(/\/+$/, '') + '/rest/v1/';
 }
-
-const BASE = SUPABASE_URL.replace(/\/+$/, '') + '/rest/v1/';
 
 /**
  * @param {string} pathWithQuery  e.g. "ag_agenda_diaria?select=..."
@@ -30,13 +31,22 @@ async function supabaseRequest(pathWithQuery, method, payload) {
   const opts = { method: method || 'GET', headers };
   if (payload != null) opts.body = JSON.stringify(payload);
 
-  const res = await fetch(BASE + pathWithQuery, opts);
-  const text = await res.text();
+  const BASE = getBaseUrl();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000); // 8s — Netlify limit is 10s
 
-  if (res.ok) {
-    return text ? JSON.parse(text) : null;
+  try {
+    opts.signal = controller.signal;
+    const res = await fetch(BASE + pathWithQuery, opts);
+    const text = await res.text();
+
+    if (res.ok) {
+      return text ? JSON.parse(text) : null;
+    }
+    throw new Error(`Supabase [${res.status}]: ${text}`);
+  } finally {
+    clearTimeout(timeout);
   }
-  throw new Error(`Supabase [${res.status}]: ${text}`);
 }
 
 module.exports = { supabaseRequest };

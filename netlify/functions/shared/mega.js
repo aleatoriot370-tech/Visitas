@@ -17,14 +17,17 @@ const MEGA_EMAIL    = process.env.MEGA_EMAIL;
 const MEGA_PASSWORD = process.env.MEGA_PASSWORD;
 const MEGA_FOLDER   = process.env.MEGA_FOLDER || null; // null = raiz
 
-if (!MEGA_EMAIL || !MEGA_PASSWORD) {
-  throw new Error('Missing MEGA_EMAIL or MEGA_PASSWORD env vars');
+function checkMegaEnv() {
+  if (!MEGA_EMAIL || !MEGA_PASSWORD) {
+    throw new Error('Missing MEGA_EMAIL or MEGA_PASSWORD env vars');
+  }
 }
 
 /**
  * Returns a logged-in mega Storage instance (reuses connection on warm starts).
  */
 function getStorage() {
+  checkMegaEnv();
   if (_storage && _ready) return _ready;
 
   _ready = new Promise((resolve, reject) => {
