@@ -3,8 +3,8 @@
  * Body: { idAd, idClientes, base64Data, tipo, indice }
  * Returns: { sucesso, nome, link }
  *
- * A imagem é salva no MEGA e a URL pública é registrada no
- * fotos_vis.Loc_Foto. Base64 só é usado como fallback se o MEGA falhar.
+ * A imagem é salva no MEGA (backup) E o base64 é registrado no
+ * fotos_vis.Loc_Foto para exibição direta no navegador.
  */
 
 const { supabaseRequest } = require('./shared/supabase');
@@ -27,7 +27,7 @@ exports.handler = async (event) => {
     const sufixo = indice ? '_' + indice : '';
     const nomeArquivo = `cliente${idClientes}_${tipo}_${timestamp}${sufixo}.webp`;
 
-    // 2. Upload para MEGA
+    // 2. Upload para MEGA (backup — não bloqueia se falhar)
     let megaLink = null;
     try {
       const puro = base64Data.includes(',') ? base64Data.split(',')[1] : base64Data;
@@ -36,12 +36,11 @@ exports.handler = async (event) => {
       megaLink = result.link;
       console.log('MEGA upload OK:', nomeArquivo, megaLink);
     } catch (megaErr) {
-      console.warn('MEGA upload falhou (usando base64 como fallback):', megaErr.message);
+      console.warn('MEGA upload falhou (continuando):', megaErr.message);
     }
 
-    // 3. Registra no Supabase — URL do MEGA (leve) ou base64 (fallback)
-    const locFoto = (megaLink && megaLink.startsWith('https://')) ? megaLink : base64Data;
-    console.log('Storing locFoto:', locFoto.substring(0, 80) + '...');
+    // 3. Registra no Supabase — salva base64 para exibição direta
+    const locFoto = base64Data;
 
     try {
       await supabaseRequest('fotos_vis', 'POST', {
