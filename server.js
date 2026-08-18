@@ -8,7 +8,6 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
-const url = require('url');
 
 // Carrega .env se existir
 const envPath = path.join(__dirname, '.env');
@@ -53,7 +52,7 @@ fs.readdirSync(FUNCTIONS_DIR).forEach(function (file) {
 console.log('Functions carregadas:', Object.keys(functions).join(', '));
 
 const server = http.createServer(async (req, res) => {
-  const parsed = url.parse(req.url, true);
+  const parsed = new URL(req.url, 'http://localhost');
   const pathname = parsed.pathname;
 
   // API routes → Netlify Functions
@@ -81,7 +80,7 @@ const server = http.createServer(async (req, res) => {
     const event = {
       httpMethod: req.method,
       path: pathname,
-      queryStringParameters: parsed.query || {},
+      queryStringParameters: Object.fromEntries(parsed.searchParams),
       headers: req.headers || {},
       body: body || null,
     };
