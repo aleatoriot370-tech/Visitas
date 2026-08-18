@@ -13,14 +13,6 @@ function hoje() {
   return new Date().toLocaleDateString('en-CA', { timeZone: getTimeZone() });
 }
 
-function ok(body) {
-  return {
-    statusCode: 200,
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  };
-}
-
 exports.handler = async (event, context) => {
   try {
     if (event.httpMethod !== 'GET') {
@@ -34,13 +26,10 @@ exports.handler = async (event, context) => {
 
     const dataHoje = hoje();
 
-    const select = [
-      'select=id_ad,id_a,id_clientes,status_atendimento,data_hora_atendimento_inicio,',
-      'data_hora_atendimento_fim,observacao,latitude,longitude,',
-      'Clientes(Codigo,Razao),',
-      'ag_agenda!inner(id_agenda,data_agenda,id_vendedor,placa),',
-      'fotos_vis(Nome_Foto,Tipo,Loc_Foto)',
-    ].join('');
+    const select =
+      'select=id_ad,id_a,id_clientes,status_atendimento,' +
+      'Clientes(Codigo,Razao),' +
+      'ag_agenda!inner(id_agenda,data_agenda,id_vendedor,placa)';
 
     const query =
       select +
