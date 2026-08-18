@@ -10,17 +10,27 @@ function getTimeZone() {
 }
 
 function hoje() {
-  return new Date().toLocaleDateString('en-CA', { timeZone: getTimeZone() }); // yyyy-MM-dd
+  return new Date().toLocaleDateString('en-CA', { timeZone: getTimeZone() });
 }
 
-exports.handler = async (event) => {
-  if (event.httpMethod !== 'GET') {
-    return { statusCode: 405, body: JSON.stringify({ sucesso: false, mensagem: 'Method not allowed' }) };
-  }
+function ok(body) {
+  return {
+    statusCode: 200,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  };
+}
 
+exports.handler = async (event, context) => {
   try {
+    if (event.httpMethod !== 'GET') {
+      return ok({ sucesso: false, mensagem: 'Method not allowed' });
+    }
+
     const idVendedor = event.queryStringParameters && event.queryStringParameters.idVendedor;
-    if (!idVendedor) throw new Error('idVendedor não informado.');
+    if (!idVendedor) {
+      return ok({ sucesso: false, mensagem: 'idVendedor não informado.', visitas: [] });
+    }
 
     const dataHoje = hoje();
 
@@ -41,6 +51,7 @@ exports.handler = async (event) => {
     const linhas = await supabaseRequest('ag_agenda_diaria?' + query, 'GET');
     return ok({ sucesso: true, visitas: linhas || [] });
   } catch (err) {
+    console.error('[visitas] Error:', err.message);
     return ok({ sucesso: false, mensagem: 'Erro ao carregar visitas: ' + err.message, visitas: [] });
   }
 };
