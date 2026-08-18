@@ -40,7 +40,8 @@ exports.handler = async (event) => {
     }
 
     // 3. Registra no Supabase — URL do MEGA (leve) ou base64 (fallback)
-    const locFoto = megaLink || base64Data;
+    const locFoto = (megaLink && megaLink.startsWith('https://')) ? megaLink : base64Data;
+    console.log('Storing locFoto:', locFoto.substring(0, 80) + '...');
 
     try {
       await supabaseRequest('fotos_vis', 'POST', {

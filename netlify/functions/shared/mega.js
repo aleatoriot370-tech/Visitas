@@ -100,7 +100,15 @@ async function uploadToMega(buffer, filename) {
 
     uploadStream.on('complete', (file) => {
       try {
-        const link = file.link();
+        // file.link() é async (callback-based). Construímos a URL manualmente.
+        const downloadId = Array.isArray(file.downloadId)
+          ? file.downloadId.join('/')
+          : file.downloadId;
+        const key = file.key ? Buffer.from(file.key).toString('base64')
+          .replace(/\+/g, '-')
+          .replace(/\//g, '_')
+          .replace(/=+$/, '') : '';
+        const link = 'https://mega.nz/file/' + downloadId + (key ? '#' + key : '');
         resolve({ link });
       } catch (e) {
         reject(new Error('Upload completo mas falhou ao gerar link: ' + e.message));
