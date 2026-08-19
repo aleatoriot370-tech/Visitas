@@ -40,10 +40,18 @@ function parseMegaKey(keyB64) {
   return { k, iv0: key32[4] >>> 0, iv1: key32[5] >>> 0 };
 }
 
+/**
+ * MEGA CTR nonce: 128-bit counter with initial value in upper 64 bits.
+ * = ((iv0 << 32) + iv1) << 64
+ *
+ * In Node.js BigInt: (BigInt(iv0) * 2n**32n + BigInt(iv1)) * 2n**64n
+ */
 function buildCtrNonce(iv0, iv1) {
+  const big = (BigInt(iv0 >>> 0) * (2n ** 32n) + BigInt(iv1 >>> 0)) * (2n ** 64n);
   const nonce = Buffer.alloc(16);
-  nonce.writeUInt32BE(iv0, 0);
-  nonce.writeUInt32BE(iv1, 4);
+  // Write as big-endian 128-bit integer
+  nonce.writeBigUInt64BE(big >> 64n, 0);   // upper 64 bits
+  nonce.writeBigUInt64BE(big & 0xFFFFFFFFFFFFFFFFn, 8); // lower 64 bits
   return nonce;
 }
 
