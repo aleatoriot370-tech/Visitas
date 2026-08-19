@@ -3,8 +3,8 @@
  * Body: { idAd, idClientes, base64Data, tipo, indice }
  * Returns: { sucesso, nome, link }
  *
- * A imagem é salva no MEGA (backup) E o base64 é registrado no
- * fotos_vis.Loc_Foto para exibição direta no navegador.
+ * A imagem é salva no MEGA e o LINK é registrado no fotos_vis.Loc_Foto.
+ * O frontend usa /api/mega-proxy para baixar e exibir a imagem.
  */
 
 const { supabaseRequest } = require('./shared/supabase');
@@ -39,8 +39,8 @@ exports.handler = async (event) => {
       console.warn('MEGA upload falhou (continuando):', megaErr.message);
     }
 
-    // 3. Registra no Supabase — salva base64 para exibição direta
-    const locFoto = base64Data;
+    // 3. Registra no Supabase — salva link MEGA (leve) ao invés de base64 (pesado)
+    const locFoto = megaLink || base64Data; // fallback para base64 se MEGA falhar
 
     try {
       await supabaseRequest('fotos_vis', 'POST', {

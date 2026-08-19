@@ -355,8 +355,20 @@ function gerarUrlsAlternativas(url) {
   // Base64 — não precisa de alternativas
   if (url.indexOf('data:') === 0) return [url];
 
+  // MEGA link — usa proxy local que baixa, descriptografa e serve
+  var megaMatch = url.match(/mega\.nz\/file\/([a-zA-Z0-9_-]+)#([a-zA-Z0-9_-]+)/);
+  if (megaMatch) {
+    return [API + '/mega-proxy?id=' + encodeURIComponent(megaMatch[1]) + '&k=' + encodeURIComponent(megaMatch[2])];
+  }
+  // MEGA old format
+  var megaOld = url.match(/mega\.nz\/#!([a-zA-Z0-9_-]+)!([a-zA-Z0-9_-]+)/);
+  if (megaOld) {
+    return [API + '/mega-proxy?id=' + encodeURIComponent(megaOld[1]) + '&k=' + encodeURIComponent(megaOld[2])];
+  }
+
   var urls = [url];
 
+  // Google Drive — gera URLs alternativas
   var id = null;
   var m1 = url.match(/[?&]id=([^&]+)/);
   if (m1) id = m1[1];
