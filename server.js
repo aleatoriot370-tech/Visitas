@@ -89,7 +89,12 @@ const server = http.createServer(async (req, res) => {
       const result = await func.handler(event);
       const headers = Object.assign({ 'Content-Type': 'application/json' }, result.headers || {});
       res.writeHead(result.statusCode || 200, headers);
-      res.end(result.body || '');
+      // Netlify Functions: isBase64Encoded means body is base64-encoded binary
+      if (result.isBase64Encoded && result.body) {
+        res.end(Buffer.from(result.body, 'base64'));
+      } else {
+        res.end(result.body || '');
+      }
     } catch (err) {
       console.error('Function error:', funcName, err);
       res.writeHead(500, { 'Content-Type': 'application/json' });
